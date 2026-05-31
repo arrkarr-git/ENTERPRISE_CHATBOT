@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Chat Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col font-sans selection:bg-blue-200">
+
+    <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shadow-sm z-10">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 p-2 rounded-lg">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+            </div>
+            <h1 class="text-xl font-bold text-gray-800">Data Assistant</h1>
+        </div>
+        <select id="role-select" class="text-sm border border-gray-300 rounded-md p-2 bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none font-medium text-gray-700">
+            <option value="Executive">Executive Dept</option>
+            <option value="Legal">Legal Dept</option>
+            <option value="Accounts">Accounts Dept</option>
+            <option value="Business">Business Users</option>
+        </select>
+    </header>
+
+    <main id="chat-container" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+        <div class="flex justify-start">
+            <div class="bg-white border border-gray-200 text-gray-800 p-4 rounded-2xl rounded-tl-sm shadow-sm max-w-[85%] md:max-w-[75%]">
+                <p class="text-sm">Hello. I am your enterprise data assistant. Ask me a question to begin.</p>
+            </div>
+        </div>
+    </main>
+
+    <div id="loading-indicator" class="hidden px-6 pb-4">
+        <div class="flex items-center gap-2 text-gray-500 bg-gray-200/50 w-fit px-4 py-2 rounded-full text-sm font-medium animate-pulse">
+            <svg class="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            Analyzing request...
+        </div>
+    </div>
+
+    <footer class="bg-white border-t border-gray-200 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10">
+        <div class="max-w-4xl mx-auto relative">
+            <input type="text" id="query-input" placeholder="Ask a question... (e.g., Count vendors by region)" 
+                class="w-full border border-gray-300 rounded-full pl-6 pr-16 py-3 md:py-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-700 shadow-inner"
+                onkeypress="if(event.key === 'Enter') sendQuery()">
+            <button onclick="sendQuery()" class="absolute right-2 top-2 bottom-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-2 md:px-4 md:py-2 transition-colors flex items-center justify-center">
+                <svg class="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                <span class="hidden md:inline font-semibold text-sm">Send</span>
+            </button>
+        </div>
+    </footer>
+
+    <script>
+        const chatContainer = document.getElementById('chat-container');
+        const queryInput = document.getElementById('query-input');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const roleSelect = document.getElementById('role-select');
+
+        function downloadCSV(encodedData) {
+            const data = JSON.parse(decodeURIComponent(encodedData));
+            if (!data || data.length === 0) return;
+            const columns = Object.keys(data[0]);
+            const csvRows = [columns.join(',')];
+            for (const row of data) {
+                const values = columns.map(col => {
+                    let cell = row[col] === null ? '' : String(row[col]);
+                    if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
+                        cell = `"${cell.replace(/"/g, '""')}"`;
+                    }
+                    return cell;
+                });
+                csvRows.push(values.join(','));
+            }
+            const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute('download', 'enterprise_export.csv');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function scrollToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function appendUserMessage(text) {
+            const html = `<div class="flex justify-end"><div class="bg-blue-600 text-white p-4 rounded-2xl rounded-tr-sm shadow-sm max-w-[85%] md:max-w-[75%]"><p class="text-sm">${text}</p></div></div>`;
+            chatContainer.insertAdjacentHTML('beforeend', html);
+            scrollToBottom();
+        }
+
+        function appendAIMessage(result) {
+            let aiResponseText = "";
+            let tableHTML = "";
+            let chartHTML = "";
+            let chartConfig = null; 
+
+            if (result.status !== 'success') {
+                aiResponseText = `<span class="text-red-600 font-semibold">System Alert:</span> ${result.message || "I cannot process this request."}`;
+            } else if (result.data && result.data.length > 0) {
+                aiResponseText = `Here is the data you requested. I found <strong>${result.data.length}</strong> matching records.`;
+                
+                const columns = Object.keys(result.data[0]);
+                const safeJSON = encodeURIComponent(JSON.stringify(result.data));
+
+                // --- NEW: SMART CHART DETECTION LOGIC ---
+                // If exactly 2 columns, and the 2nd column is a number, build a chart!
+                if (columns.length === 2) {
+                    const labelCol = columns[0];
+                    const dataCol = columns[1];
+                    
+                    const isNumerical = result.data.every(row => !isNaN(parseFloat(row[dataCol])));
+                    
+                    if (isNumerical && result.data.length > 1) {
+                        const chartId = 'chart-' + Math.random().toString(36).substr(2, 9);
+                        chartHTML = `
+                            <div class="mt-4 p-4 bg-white border border-gray-200 rounded-lg shadow-sm w-full h-64">
+                                <canvas id="${chartId}"></canvas>
+                            </div>`;
+                        
+                        chartConfig = {
+                            id: chartId,
+                            labels: result.data.map(row => String(row[labelCol])),
+                            data: result.data.map(row => parseFloat(row[dataCol])),
+                            labelName: dataCol.replace(/_/g, ' ').toUpperCase()
+                        };
+                    }
+                }
+
+                // Build Table HTML
+                let thead = columns.map(col => `<th class="px-3 py-2 font-semibold text-gray-700 capitalize whitespace-nowrap">${col.replace(/_/g, ' ')}</th>`).join('');
+                let tbody = result.data.map(row => `<tr class="hover:bg-gray-50">${columns.map(col => `<td class="px-3 py-2 text-gray-600 border-t border-gray-100 whitespace-nowrap">${row[col]}</td>`).join('')}</tr>`).join('');
+
+                tableHTML = `
+                    <div class="mt-4 border border-gray-200 rounded-lg overflow-hidden bg-white">
+                        <div class="flex justify-between items-center bg-gray-50 px-4 py-2 border-b border-gray-200">
+                            <span class="text-xs font-semibold text-gray-500 uppercase">Query Results</span>
+                            <button onclick="downloadCSV('${safeJSON}')" class="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                Download CSV
+                            </button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm border-collapse">
+                                <thead class="bg-gray-100 border-b border-gray-200">${thead}</thead>
+                                <tbody>${tbody}</tbody>
+                            </table>
+                        </div>
+                    </div>`;
+            } else {
+                aiResponseText = "I executed the query successfully, but no records matched your criteria.";
+            }
+
+            let sqlHTML = "";
+            if (result.generated_sql && result.generated_sql !== "--") {
+                sqlHTML = `<details class="mt-3 text-xs text-gray-500 cursor-pointer"><summary class="hover:text-blue-600 font-medium transition-colors">View SQL Code</summary><div class="mt-2 bg-slate-800 text-green-400 p-3 rounded font-mono overflow-x-auto">${result.generated_sql}</div></details>`;
+            }
+
+            const html = `
+                <div class="flex justify-start">
+                    <div class="bg-white border border-gray-200 text-gray-800 p-4 rounded-2xl rounded-tl-sm shadow-sm max-w-[95%] md:max-w-[85%] w-full">
+                        <p class="text-sm">${aiResponseText}</p>
+                        ${chartHTML}
+                        ${tableHTML}
+                        ${sqlHTML}
+                    </div>
+                </div>`;
+            
+            chatContainer.insertAdjacentHTML('beforeend', html);
+            
+            // --- NEW: RENDER THE CHART (Must happen AFTER HTML is on the screen) ---
+            if (chartConfig) {
+                const ctx = document.getElementById(chartConfig.id).getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: chartConfig.labels,
+                        datasets: [{
+                            label: chartConfig.labelName,
+                            data: chartConfig.data,
+                            backgroundColor: 'rgba(37, 99, 235, 0.7)',
+                            borderColor: 'rgba(37, 99, 235, 1)',
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+            }
+
+            scrollToBottom();
+        }
+
+        async function sendQuery() {
+            const text = queryInput.value.trim();
+            if (!text) return;
+
+            queryInput.value = '';
+            appendUserMessage(text);
+            loadingIndicator.classList.remove('hidden');
+            scrollToBottom();
+
+            try {
+                const response = await fetch('http://127.0.0.1:8080/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role: roleSelect.value, query: text })
+                });
+                const result = await response.json();
+                appendAIMessage(result);
+            } catch (error) {
+                appendAIMessage({ status: 'error', message: 'Connection to server failed.' });
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
